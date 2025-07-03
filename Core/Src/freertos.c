@@ -1,177 +1,107 @@
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * File Name          : freertos.c
-  * Description        : Code for freertos applications
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-#define GPS_RX_TIMEOUT 1000
-#define ALT_THRESHOLD_M 100
-
-/* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
 #include "tim.h"
 #include "usart.h"
+#include "gps.h"
+#include <stdio.h>
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-#include <string.h>
-#include <stdlib.h>
-/* USER CODE END Includes */
+#define ALTITUDE_DEPLOYMENT_M 100.0f
+#define GPS_BUFFER_SIZE 128
 
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
-/* USER CODE BEGIN Variables */
-osThreadId_t GpsServoTaskHandle;
-const osThreadAttr_t GpsServoTask_attributes = {
-  .name = "GpsServo",
+osThreadId_t gpsServoTaskHandle;
+const osThreadAttr_t gpsServoTask_attributes = {
+  .name = "gpsServoTask",
   .priority = (osPriority_t) osPriorityNormal,
-  .stack_size = 256 * 4
+  .stack_size = 512 * 4
 };
-/* USER CODE END Variables */
 
-/* Private function prototypes -----------------------------------------------*/
-void StartDefaultTask(void *argument);
-void StartGpsServoTask(void *argument);
+void GpsServoTask(void *argument);
 
-void MX_FREERTOS_Init(void);
-/* USER CODE BEGIN FunctionPrototypes */
-
-/* USER CODE END FunctionPrototypes */
-
-/**
-  * @brief  FreeRTOS initialization
-  * @param  None
-  * @retval None
-  */
 void MX_FREERTOS_Init(void) {
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
-
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
-
-  /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
-
-  /* Create the thread(s) */
-  /* creation of defaultTask */
-  {
-    const osThreadAttr_t defaultTask_attributes = {
-      .name = "defaultTask",
-      .priority = (osPriority_t) osPriorityNormal,
-      .stack_size = 128 * 4
-    };
-    osThreadId_t defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-  }
-
-  /* USER CODE BEGIN RTOS_THREADS */
-  /* creation of GpsServoTask */
-  GpsServoTaskHandle = osThreadNew(StartGpsServoTask, NULL, &GpsServoTask_attributes);
-  /* USER CODE END RTOS_THREADS */
-
-  /* USER CODE BEGIN RTOS_EVENTS */
-  /* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
-
+  gpsServoTaskHandle = osThreadNew(GpsServoTask, NULL, &gpsServoTask_attributes);
 }
 
-/* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+void GpsServoTask(void *argument)
 {
-  /* USER CODE BEGIN StartDefaultTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartDefaultTask */
-}
+  GPS_Data gps_data = {0};
+  char gps_buffer[GPS_BUFFER_SIZE];
+  uint8_t buffer_idx = 0;
+  char uart_char;
+  int gps_fix_found = 0;
 
-/* USER CODE BEGIN Header_StartGpsServoTask */
-/**
-  * @brief  Function implementing the GpsServoTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartGpsServoTask */
-void StartGpsServoTask(void *argument)
-{
-  /* USER CODE BEGIN StartGpsServoTask */
-  char line[128];
-  uint8_t idx = 0;
+  // Séquence de test au démarrage
+  osDelay(30000); // Attente de 30 secondes
+
+  // Vérification du fix GPS
+  for (int i = 0; i < 30; i++) { // Tente de recevoir des données pendant 30s
+      if (HAL_UART_Receive(&huart1, (uint8_t*)&uart_char, 1, 1000) == HAL_OK) {
+          if (uart_char == '\n') {
+              gps_buffer[buffer_idx] = '\0';
+              if (GPS_Parse(gps_buffer, &gps_data) == 0 && gps_data.fix > 0) {
+                  gps_fix_found = 1;
+                  break;
+              }
+              buffer_idx = 0;
+          } else if (buffer_idx < GPS_BUFFER_SIZE - 1) {
+              gps_buffer[buffer_idx++] = uart_char;
+          }
+      }
+  }
+
+
+  if (gps_fix_found) {
+    // Tour complet des servos
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 500); // 0°
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 500);
+    osDelay(1000);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 2500); // 180°
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 2500);
+    osDelay(1000);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 500); // 0°
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 500);
+  } else {
+    // Mouvement avant/arrière
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 1500); // 90° (position neutre)
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 1500);
+    osDelay(1000);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 2000); // +45°
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 2000);
+    osDelay(1000);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 1000); // -45°
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 1000);
+    osDelay(1000);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 1500); // Retour à la position neutre
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 1500);
+  }
+
+
+  // Boucle principale
   for(;;)
   {
-    char c;
-    if (HAL_UART_Receive(&huart1, (uint8_t*)&c, 1, GPS_RX_TIMEOUT) == HAL_OK)
-    {
-      if (c == '\n' || idx >= sizeof(line)-1)
-      {
-        line[idx] = '\0';
-        if (strncmp(line, "$GPGGA", 6) == 0)
-        {
-          float alt = GPS_ParseAltitude(line);
-          uint8_t angle = (alt >= ALT_THRESHOLD_M) ? 180 : 0;
-          __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, Servo_CalcPulse(angle));
-          __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, Servo_CalcPulse(angle));
+    if (HAL_UART_Receive(&huart1, (uint8_t*)&uart_char, 1, 100) == HAL_OK) {
+        if (uart_char == '\n') {
+            gps_buffer[buffer_idx] = '\0';
+            if (GPS_Parse(gps_buffer, &gps_data) == 0) {
+                 // Imprimer l'altitude pour le débogage
+                char debug_msg[50];
+                sprintf(debug_msg, "Altitude: %.2f m, Fix: %d\r\n", gps_data.altitude, gps_data.fix);
+                HAL_UART_Transmit(&huart2, (uint8_t*)debug_msg, strlen(debug_msg), HAL_MAX_DELAY);
+
+                if (gps_data.altitude > ALTITUDE_DEPLOYMENT_M) {
+                    // Déploiement
+                    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 2500); // 180°
+                    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 2500);
+                } else {
+                    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 500); // 0°
+                    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 500);
+                }
+            }
+            buffer_idx = 0;
+        } else if (buffer_idx < GPS_BUFFER_SIZE - 1) {
+            gps_buffer[buffer_idx++] = uart_char;
         }
-        idx = 0;
-      }
-      else
-      {
-        line[idx++] = c;
-      }
     }
-    osDelay(10);
   }
-  /* USER CODE END StartGpsServoTask */
 }
-
-/* Private application code --------------------------------------------------*/
-/* USER CODE BEGIN Application */
-
-/* USER CODE END Application */
