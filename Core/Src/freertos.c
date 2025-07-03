@@ -6,6 +6,7 @@
 #include "usart.h"
 #include "gps.h"
 #include <stdio.h>
+#include <string.h> // Ajout pour strlen
 
 #define ALTITUDE_DEPLOYMENT_M 100.0f
 #define GPS_BUFFER_SIZE 128

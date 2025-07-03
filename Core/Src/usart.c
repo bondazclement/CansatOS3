@@ -8,11 +8,8 @@
   */
 /* USER CODE END Header */
 
+#include "main.h"
 #include "usart.h"
-
-UART_HandleTypeDef huart1;
-UART_HandleTypeDef huart2;
-
 /**
   * @brief USART1 Initialization Function (GPS)
   */

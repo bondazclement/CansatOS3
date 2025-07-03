@@ -1,5 +1,5 @@
-#include "tim.h"
 #include "main.h"
+#include "tim.h"
 
 TIM_HandleTypeDef htim1;
 

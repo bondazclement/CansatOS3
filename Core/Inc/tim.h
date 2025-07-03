@@ -1,11 +1,14 @@
 #ifndef __TIM_H
 #define __TIM_H
 
-#include "stm32l4xx_hal.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-extern TIM_HandleTypeDef htim1;
+// PAS d'include ici. Il sera fait par main.h
 
-void MX_TIM1_Init(void);
-uint32_t Servo_CalcPulse(uint8_t angle);
+#ifdef __cplusplus
+}
+#endif
 
-#endif /* __TIM_H */
+#endif /*__TIM_H*/

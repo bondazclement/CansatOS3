@@ -4,6 +4,7 @@
  *  Created on: Jul 3, 2025
  *      Author: clementbondaz-sanson
  */
+#include "main.h" // Pour la cohérence et les futures dépendances HAL
 #include "gps.h"
 #include <string.h>
 #include <stdlib.h>
